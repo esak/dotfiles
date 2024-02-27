@@ -1,0 +1,787 @@
+#+STARTUP: showeverything
+#+OPTIONS: toc:
+
+* TABLE OF CONTENTS :toc:
+- [[#adding-the-scripts-directory-to-path][Adding the scripts directory to path]]
+- [[#important-program-to-load-first][IMPORTANT PROGRAM TO LOAD FIRST]]
+  - [[#elpaca-package-manager][Elpaca Package Manager]]
+- [[#graphical-user-interface-tweaks][GRAPHICAL USER INTERFACE TWEAKS]]
+  - [[#disable-menubar-toolbars-and-scrollbars][Disable Menubar, Toolbars and Scrollbars]]
+- [[#fonts][FONTS]]
+  - [[#setting-the-font-face][Setting the Font Face]]
+  - [[#zooming-inout][Zooming In/Out]]
+- [[#sane-defaults][SANE DEFAULTS]]
+  - [[#display-line-numbers-and-truncated-lines][Display Line Numbers and Truncated Lines]]
+- [[#company][COMPANY]]
+- [[#dashboard][DASHBOARD]]
+- [[#diminish][DIMINISH]]
+- [[#dired][DIRED]]
+- [[#elfeed][ELFEED]]
+- [[#zooming-inout-1][Zooming In/Out]]
+- [[#highlight-todo][HIGHLIGHT TODO]]
+- [[#ivy-counsel][IVY (COUNSEL)]]
+- [[#language-support][LANGUAGE SUPPORT]]
+- [[#ein][ein]]
+- [[#minibuffer-escape][MINIBUFFER ESCAPE]]
+- [[#modeline][MODELINE]]
+- [[#neotree][NEOTREE]]
+- [[#rainbow-delimiters][rainbow-delimiters]]
+- [[#paren][paren]]
+- [[#beacon][beacon]]
+- [[#migemo][migemo]]
+- [[#ddskk][ddskk]]
+- [[#org-mode][ORG MODE]]
+  - [[#enabling-table-of-contents][Enabling Table of Contents]]
+  - [[#enabling-org-bullets][Enabling Org Bullets]]
+  - [[#disable-electric-indent][Disable Electric Indent]]
+  - [[#org-level-headers][Org Level Headers]]
+  - [[#source-code-block-tag-expansion][Source Code Block Tag Expansion]]
+  - [[#org-super-agenda][org-super-agenda]]
+  - [[#org-kanban][Org-kanban]]
+- [[#languagetool][LANGUAGETOOL]]
+- [[#rainbow-mode][RAINBOW MODE]]
+- [[#sudo-edit][SUDO EDIT]]
+- [[#which-key][WHICH-KEY]]
+- [[#sourcing-the-scripts][Sourcing the scripts]]
+- [[#all-the-icons][ALL THE ICONS]]
+- [[#theme][THEME]]
+- [[#mu4e][mu4e]]
+- [[#mpv][mpv]]
+- [[#transparency][TRANSPARENCY]]
+
+* Adding the scripts directory to path
+#+begin_src emacs-lisp
+(add-to-list 'load-path "~/.config/emacs/scripts/")
+#+end_src
+
+* IMPORTANT PROGRAM TO LOAD FIRST
+** Elpaca Package Manager
+#+BEGIN_SRC emacs-lisp
+(defvar elpaca-installer-version 0.6)
+(defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
+(defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
+(defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
+(defvar elpaca-order '(elpaca :repo "https://github.com/progfolio/elpaca.git"
+                              :ref nil
+                              :files (:defaults "elpaca-test.el" (:exclude "extensions"))
+                              :build (:not elpaca--activate-package)))
+(let* ((repo  (expand-file-name "elpaca/" elpaca-repos-directory))
+       (build (expand-file-name "elpaca/" elpaca-builds-directory))
+       (order (cdr elpaca-order))
+       (default-directory repo))
+  (add-to-list 'load-path (if (file-exists-p build) build repo))
+  (unless (file-exists-p repo)
+    (make-directory repo t)
+    (when (< emacs-major-version 28) (require 'subr-x))
+    (condition-case-unless-debug err
+        (if-let ((buffer (pop-to-buffer-same-window "*elpaca-bootstrap*"))
+                 ((zerop (call-process "git" nil buffer t "clone"
+                                       (plist-get order :repo) repo)))
+                 ((zerop (call-process "git" nil buffer t "checkout"
+                                       (or (plist-get order :ref) "--"))))
+                 (emacs (concat invocation-directory invocation-name))
+                 ((zerop (call-process emacs nil buffer nil "-Q" "-L" "." "--batch"
+                                       "--eval" "(byte-recompile-directory \".\" 0 'force)")))
+                 ((require 'elpaca))
+                 ((elpaca-generate-autoloads "elpaca" repo)))
+            (progn (message "%s" (buffer-string)) (kill-buffer buffer))
+          (error "%s" (with-current-buffer buffer (buffer-string))))
+      ((error) (warn "%s" err) (delete-directory repo 'recursive))))
+  (unless (require 'elpaca-autoloads nil t)
+    (require 'elpaca)
+    (elpaca-generate-autoloads "elpaca" repo)
+    (load "./elpaca-autoloads")))
+(add-hook 'after-init-hook #'elpaca-process-queues)
+(elpaca `(,@elpaca-order))
+
+;; Uncomment for systems which cannot create symlinks:
+(when (equal system-type 'windows-nt)
+  (elpaca-no-symlink-mode))
+
+;; Install a package via the elpaca macro
+;; See the "recipes" section of the manual for more details.
+
+;; (elpaca example-package)
+
+;; Install use-package support
+(elpaca elpaca-use-package
+  ;; Enable :elpaca use-package keyword.
+  (elpaca-use-package-mode)
+  ;; Assume :elpaca t unless otherwise specified.
+  (setq elpaca-use-package-by-default t))
+
+;; Block until current queue processed.
+(elpaca-wait)
+
+;;When installing a package which modifies a form used at the top-level
+;;(e.g. a package which adds a use-package key word),
+;;use `elpaca-wait' to block until that package has been installed/configured.
+;;For example:
+;;(use-package general :demand t)
+;;(elpaca-wait)
+
+;; Expands to: (elpaca evil (use-package evil :demand t))
+;;(use-package evil :demand t)
+
+;;Turns off elpaca-use-package-mode current declaration
+;;Note this will cause the declaration to be interpreted immediately (not deferred).
+;;Useful for configuring built-in emacs features.
+(use-package emacs :elpaca nil :config (setq ring-bell-function #'ignore))
+
+;; Don't install anything. Defer execution of BODY
+(elpaca nil (message "deferred"))
+#+END_SRC
+
+* GRAPHICAL USER INTERFACE TWEAKS
+Let's make GNU Emacs look a little better.
+
+** Disable Menubar, Toolbars and Scrollbars
+#+begin_src emacs-lisp
+;;(menu-bar-mode -1)
+(tool-bar-mode -1)
+(scroll-bar-mode -1)
+#+end_src
+
+* FONTS
+Defining the various fonts that Emacs will use.
+
+** Setting the Font Face
+#+begin_src emacs-lisp
+(set-face-attribute 'default nil
+  :font "JetBrainsMonoNL Nerd Font"
+  :height 180
+  :weight 'medium)
+(set-face-attribute 'variable-pitch nil
+  :font "JetBrainsMonoNL Nerd Font"
+  :height 180
+  :weight 'medium)
+(set-face-attribute 'fixed-pitch nil
+  :font "JetBrainsMonoNL Nerd Font"
+  :height 180
+  :weight 'medium)
+;; Makes commented text and keywords italics.
+;; This is working in emacsclient but not emacs.
+;; Your font must have an italic face available.
+(set-face-attribute 'font-lock-comment-face nil
+  :slant 'italic)
+(set-face-attribute 'font-lock-keyword-face nil
+  :slant 'italic)
+
+;; This sets the default font on all graphical frames created after restarting Emacs.
+;; Does the same thing as 'set-face-attribute default' above, but emacsclient fonts
+;; are not right unless I also add this method of setting the default font.
+;;(add-to-list 'default-frame-alist '(font . "JetBrainsMonoNL Nerd Font"))
+
+;; Uncomment the following line if line spacing needs adjusting.
+(setq-default line-spacing 0.12)
+#+end_src
+
+** Zooming In/Out
+You can use the bindings CTRL plus =/- for zooming in/out.  You can also use CTRL plus the mouse wheel for zooming in/out.
+
+#+begin_src emacs-lisp
+(global-set-key (kbd "C-=") 'text-scale-increase)
+(global-set-key (kbd "C--") 'text-scale-decrease)
+(global-set-key (kbd "<C-wheel-up>") 'text-scale-increase)
+(global-set-key (kbd "<C-wheel-down>") 'text-scale-decrease)
+#+end_src
+
+* SANE DEFAULTS
+The following settings are simple modes that are enabled (or disabled) so that Emacs functions more like you would expect a proper editor/IDE to function.
+
+#+begin_src emacs-lisp
+(delete-selection-mode 1)    ;; You can select text and delete it by typing.
+(electric-indent-mode -1)    ;; Turn off the weird indenting that Emacs does by default.
+(electric-pair-mode 1)       ;; Turns on automatic parens pairing
+;; The following prevents <> from auto-pairing when electric-pair-mode is on.
+;; Otherwise, org-tempo is broken when you try to <s TAB...
+(add-hook 'org-mode-hook (lambda ()
+           (setq-local electric-pair-inhibit-predicate
+                   `(lambda (c)
+                  (if (char-equal c ?<) t (,electric-pair-inhibit-predicate c))))))
+(global-auto-revert-mode t)  ;; Automatically show changes if the file has changed
+(global-display-line-numbers-mode 1) ;; Display line numbers
+(global-visual-line-mode t)  ;; Enable truncated lines
+;;(menu-bar-mode -1)           ;; Disable the menu bar 
+(scroll-bar-mode -1)         ;; Disable the scroll bar
+(tool-bar-mode -1)           ;; Disable the tool bar
+(setq org-edit-src-content-indentation 0) ;; Set src block automatic indent to 0 instead of 2.
+#+end_src
+
+** Display Line Numbers and Truncated Lines
+#+begin_src emacs-lisp
+(global-display-line-numbers-mode 1)
+(global-visual-line-mode t)
+#+end_src
+
+* COMPANY
+[[https://company-mode.github.io/][Company]] is a text completion framework for Emacs. The name stands for "complete anything".  Completion will start automatically after you type a few letters. Use M-n and M-p to select, <return> to complete or <tab> to complete the common part.
+
+#+begin_src emacs-lisp
+(use-package company
+  :defer 2
+  :diminish
+  :custom
+  (company-begin-commands '(self-insert-command))
+  (company-idle-delay .1)
+  (company-minimum-prefix-length 2)
+  (company-show-numbers t)
+  (company-tooltip-align-annotations 't)
+  (global-company-mode t))
+  
+(use-package company-box
+  :after company
+  :diminish
+  :hook (company-mode . company-box-mode))
+#+end_src
+
+* DASHBOARD
+Emacs Dashboard is an extensible startup screen showing you recent files, bookmarks, agenda items and an Emacs banner.
+
+#+begin_src emacs-lisp
+(use-package dashboard
+  :ensure t
+  :init
+  (setq initial-buffer-choice 'dashboard-open)
+  (setq dashboard-set-heading-icons t)
+  (setq dashboard-set-file-icons t)
+  (setq dashboard-banner-logo-title "Emacs Is More Than A Text Editor!")
+  ;;(setq dashboard-startup-banner 'logo) ;; use standard emacs logo as banner
+  ;;(setq dashboard-startup-banner "~/.config/emacs/images/dtmacs-logo.png")  ;; use custom image as banner
+  (setq dashboard-center-content nil) ;; set to 't' for centered content
+  (setq dashboard-items '((recents . 10)
+                          (agenda . 5 )
+                          (bookmarks . 3)
+                          ;;(projects . 3)
+                          (registers . 3)))
+  :custom
+  (dashboard-modify-heading-icons '((recents . "file-text")
+                                    (bookmarks . "book")))
+  :config
+  (dashboard-setup-startup-hook))
+  #+end_src
+
+* DIMINISH
+This package implements hiding or abbreviation of the modeline displays (lighters) of minor-modes.  With this package installed, you can add ':diminish' to any use-package block to hide that particular mode in the modeline.
+
+#+begin_src emacs-lisp
+(use-package diminish)
+#+end_src
+
+* DIRED
+#+begin_src emacs-lisp
+(use-package dired-open
+  :config
+  (setq dired-open-extensions '(("gif" . "sxiv")
+                                ("jpg" . "sxiv")
+                                ("png" . "sxiv")
+                                ("mkv" . "mpv")
+                                ("mp4" . "mpv"))))
+
+(use-package peep-dired
+  :after dired
+  :hook (evil-normalize-keymaps . peep-dired-hook)
+  :config
+    (evil-define-key 'normal dired-mode-map (kbd "h") 'dired-up-directory)
+    (evil-define-key 'normal dired-mode-map (kbd "l") 'dired-open-file) ; use dired-find-file instead if not using dired-open package
+    (evil-define-key 'normal peep-dired-mode-map (kbd "j") 'peep-dired-next-file)
+    (evil-define-key 'normal peep-dired-mode-map (kbd "k") 'peep-dired-prev-file)
+)
+#+end_src
+
+* ELFEED
+An RSS newsfeed reader for Emacs.  Move through the articles with 'j/k'.  Move through the stories with 'CTRL j/k' when in other frame.
+
+#+begin_src emacs-lisp
+(use-package elfeed
+  :config
+  (setq elfeed-search-feed-face ":foreground #ffffff :weight bold"
+        elfeed-feeds (quote
+                       (
+                        ("https://news.ycombinator.com/rss" tech)
+                        ;;("https://www.riken.jp/feed/closeup_feed/" science)
+                        ("https://sachachua.com/blog/feed/" emacs)
+                        ;; ("https://www.reddit.com/r/linux.rss" reddit linux)
+                        ;; ("https://www.reddit.com/r/commandline.rss" reddit commandline)
+                        ;; ("https://www.reddit.com/r/distrotube.rss" reddit distrotube)
+                        ;; ("https://www.reddit.com/r/emacs.rss" reddit emacs)
+                        ;; ("https://www.gamingonlinux.com/article_rss.php" gaming linux)
+                        ;; ("https://hackaday.com/blog/feed/" hackaday linux)
+                        ;; ("https://opensource.com/feed" opensource linux)
+                        ;; ("https://linux.softpedia.com/backend.xml" softpedia linux)
+                        ;; ("https://itsfoss.com/feed/" itsfoss linux)
+                        ;; ("https://www.zdnet.com/topic/linux/rss.xml" zdnet linux)
+                        ;; ("https://www.phoronix.com/rss.php" phoronix linux)
+                        ;; ("http://feeds.feedburner.com/d0od" omgubuntu linux)
+                        ;; ("https://www.computerworld.com/index.rss" computerworld linux)
+                        ;; ("https://www.networkworld.com/category/linux/index.rss" networkworld linux)
+                        ;; ("https://www.techrepublic.com/rssfeeds/topic/open-source/" techrepublic linux)
+                        ;; ("https://betanews.com/feed" betanews linux)
+                        ;; ("http://lxer.com/module/newswire/headlines.rss" lxer linux)
+                        ;; ("https://distrowatch.com/news/dwd.xml" distrowatch linux)
+                       ))))
+(use-package elfeed-goodies
+  :init
+  (elfeed-goodies/setup)
+  :config
+  (setq elfeed-goodies/entry-pane-size 0.5))
+#+end_src
+
+* Zooming In/Out
+You can use the bindings CTRL plus =/- for zooming in/out.  You can also use CTRL plus the mouse wheel for zooming in/out.
+
+#+begin_src emacs-lisp
+(global-set-key (kbd "C-=") 'text-scale-increase)
+(global-set-key (kbd "C--") 'text-scale-decrease)
+(global-set-key (kbd "<C-wheel-up>") 'text-scale-increase)
+(global-set-key (kbd "<C-wheel-down>") 'text-scale-decrease)
+#+end_src
+
+* HIGHLIGHT TODO
+Adding highlights to TODO and related words.
+
+#+begin_src emacs-lisp
+(use-package hl-todo
+  :hook ((org-mode . hl-todo-mode)
+         (prog-mode . hl-todo-mode))
+  :config
+  (setq hl-todo-highlight-punctuation ":"
+        hl-todo-keyword-faces
+        `(("TODO"       warning bold)
+          ("FIXME"      error bold)
+          ("HACK"       font-lock-constant-face bold)
+          ("REVIEW"     font-lock-keyword-face bold)
+          ("NOTE"       success bold)
+          ("DEPRECATED" font-lock-doc-face bold))))
+
+#+end_src
+
+* IVY (COUNSEL)
++ Ivy, a generic completion mechanism for Emacs.
++ Counsel, a collection of Ivy-enhanced versions of common Emacs commands.
++ Ivy-rich allows us to add descriptions alongside the commands in M-x.
+
+#+begin_src emacs-lisp
+(use-package counsel
+  :after ivy
+  :diminish
+  :config 
+    (counsel-mode)
+    (setq ivy-initial-inputs-alist nil)) ;; removes starting ^ regex in M-x
+
+(use-package ivy
+  :bind
+  ;; ivy-resume resumes the last Ivy-based completion.
+  (("C-c C-r" . ivy-resume)
+   ("C-x B" . ivy-switch-buffer-other-window))
+  :diminish
+  :custom
+  (setq ivy-use-virtual-buffers t)
+  (setq ivy-count-format "(%d/%d) ")
+  (setq enable-recursive-minibuffers t)
+  :config
+  (ivy-mode))
+
+(use-package all-the-icons-ivy-rich
+  :ensure t
+  :init (all-the-icons-ivy-rich-mode 1))
+
+(use-package ivy-rich
+  :after ivy
+  :ensure t
+  :init (ivy-rich-mode 1) ;; this gets us descriptions in M-x.
+  :custom
+  (ivy-virtual-abbreviate 'full
+   ivy-rich-switch-buffer-align-virtual-buffer t
+   ivy-rich-path-style 'abbrev)
+  :config
+  (ivy-set-display-transformer 'ivy-switch-buffer
+                               'ivy-rich-switch-buffer-transformer))
+
+#+end_src
+
+* LANGUAGE SUPPORT
+Emacs has built-in programming language modes for Lisp, Scheme, DSSSL, Ada, ASM, AWK, C, C++, Fortran, Icon, IDL (CORBA), IDLWAVE, Java, Javascript, M4, Makefiles, Metafont, Modula2, Object Pascal, Objective-C, Octave, Pascal, Perl, Pike, PostScript, Prolog, Python, Ruby, Simula, SQL, Tcl, Verilog, and VHDL.  Other languages will require you to install additional modes.
+
+#+begin_src emacs-lisp
+(use-package haskell-mode)
+(use-package julia-mode)
+(use-package yaml-mode)
+#+end_src
+
+* ein
+#+begin_src emacs-lisp
+(use-package ein)
+#+end_src
+
+
+* MINIBUFFER ESCAPE
+By default, Emacs requires you to hit ESC three times to escape quit the minibuffer.  
+
+#+begin_src emacs-lisp
+(global-set-key [escape] 'keyboard-escape-quit)
+#+end_src
+
+* MODELINE
+The modeline is the bottom status bar that appears in Emacs windows.  While you can create your own custom modeline, why go to the trouble when Doom Emacs already has a nice modeline package available.  For more information on what is available to configure in the Doom modeline, check out: [[https://github.com/seagle0128/doom-modeline][Doom Modeline]]
+
+#+begin_src emacs-lisp
+(use-package doom-modeline
+  :ensure t
+  :init (doom-modeline-mode 1)
+  :config
+  (setq doom-modeline-height 20      ;; sets modeline height
+        doom-modeline-bar-width 5    ;; sets right bar width
+        doom-modeline-persp-name t   ;; adds perspective name to modeline
+        doom-modeline-persp-icon t)) ;; adds folder icon next to persp name
+#+end_src
+
+* NEOTREE
+Neotree is a file tree viewer.  When you open neotree, it jumps to the current file thanks to neo-smart-open.  The neo-window-fixed-size setting makes the neotree width be adjustable.  NeoTree provides following themes: classic, ascii, arrow, icons, and nerd.  Theme can be config'd by setting "two" themes for neo-theme: one for the GUI and one for the terminal.  I like to use 'SPC t' for 'toggle' keybindings, so I have used 'SPC t n' for toggle-neotree.
+
+| COMMAND        | DESCRIPTION                 | KEYBINDING |
+|----------------+-----------------------------+------------|
+| neotree-toggle | /Toggle neotree/            | SPC t n    |
+| neotree- dir   | /Open directory in neotree/ | SPC d n    |
+
+#+BEGIN_SRC emacs-lisp
+(use-package neotree
+  :config
+  (setq neo-smart-open t
+        neo-show-hidden-files t
+        neo-window-width 55
+        neo-window-fixed-size nil
+        inhibit-compacting-font-caches t
+        projectile-switch-project-action 'neotree-projectile-action) 
+        ;; truncate long file names in neotree
+        (add-hook 'neo-after-create-hook
+           #'(lambda (_)
+               (with-current-buffer (get-buffer neo-buffer-name)
+                 (setq truncate-lines t)
+                 (setq word-wrap nil)
+                 (make-local-variable 'auto-hscroll-mode)
+                 (setq auto-hscroll-mode nil)))))
+
+#+end_src
+  
+* rainbow-delimiters
+#+begin_src emacs-lisp
+(use-package rainbow-delimiters
+  :hook
+  (prog-mode . rainbow-delimiters-mode))
+#+end_src
+
+* paren
+#+begin_src emacs-lisp
+;;(use-package paren
+;;  :ensure nil
+;;  :hook
+;;  (after-init . show-paren-mode)
+;;  :custom-face
+;;  (show-paren-match ((nil (:background "#44475a" :foreground "#f1fa8c"))))
+;;  :custom
+;;  (show-paren-style 'mixed)
+;;  (show-paren-when-point-inside-paren t)
+;;  (show-paren-when-point-in-periphery t))
+#+end_src
+
+* beacon
+#+begin_src emacs-lisp
+(use-package beacon
+    :custom
+    (beacon-color "yellow")
+    :config
+    (beacon-mode 1))
+#+end_src
+
+* migemo
+
+* ddskk
+#+begin_src emacs-lisp
+;; (use-package ddskk)
+;; (require 'skk-autoloads)
+;; (setq skk-user-directory "~/.emacs.d/ddskk")
+;; (global-set-key "\C-x\C-j" 'skk-mode)
+;; (global-set-key "\C-xj" 'skk-auto-fill-mode)
+;; (global-set-key "\C-xt" 'skk-tutorial)
+;; (setq skk-large-jisyo "~/.emacs.d/ddskk/SKK-JISYO.L")
+
+;; (global-set-key (kbd "C-x j") 'skk-auto-fill-mode) ;;良い感じに改行を自動入力してくれる機能
+;; (setq default-input-method "japanese-skk")         ;;emacs上での日本語入力にskkをつかう
+;;(require 'skk-study)                              ;;変換学習機能の追加
+#+end_src
+
+* ORG MODE
+#+begin_src emacs-lisp
+;;(use-package org)
+#+end_src
+
+** Enabling Table of Contents
+#+begin_src emacs-lisp
+  (use-package toc-org
+      :commands toc-org-enable
+      :init (add-hook 'org-mode-hook 'toc-org-enable))
+#+end_src
+
+** Enabling Org Bullets
+Org-bullets gives us attractive bullets rather than asterisks.
+#+begin_src emacs-lisp
+  (add-hook 'org-mode-hook 'org-indent-mode)
+  (use-package org-bullets)
+  (add-hook 'org-mode-hook (lambda () (org-bullets-mode 1)))
+#+end_src
+
+** Disable Electric Indent
+Org mode source block have some really weird annoying default indentation behavior.
+I think this has to do with elctric-indent-mode, which is turned on by default in Emacs.
+So let's turn it OFF!
+#+BEGIN_SRC emacs-lisp
+(electric-indent-mode -1)
+#+END_SRC
+
+** Org Level Headers
+#+begin_src emacs-lisp
+  (custom-set-faces
+   '(org-level-1 ((t (:inherit outline-1 :height 1.2))))
+   '(org-level-2 ((t (:inherit outline-2 :height 1.2))))
+   '(org-level-3 ((t (:inherit outline-3 :height 1.2))))
+   '(org-level-4 ((t (:inherit outline-4 :height 1.2))))
+   '(org-level-5 ((t (:inherit outline-5 :height 1.2))))
+   '(org-level-6 ((t (:inherit outline-5 :height 1.2))))
+   '(org-level-7 ((t (:inherit outline-5 :height 1.2)))))
+#+end_src
+
+** Source Code Block Tag Expansion
+Org-tempo is not a separate package but a module within org that can be enabled.
+Org-tempo allows for '<s' followed by TAB to expand to a begin_src tag.
+Other expansions available include:
+
+| Typing the below + TAB | Expands to ...                          |
+|------------------------+-----------------------------------------|
+| <a                     | '#+BEGIN_EXPORT ascii' … '#+END_EXPORT  |
+| <c                     | '#+BEGIN_CENTER' … '#+END_CENTER'       |
+| <C                     | '#+BEGIN_COMMENT' … '#+END_COMMENT'     |
+| <e                     | '#+BEGIN_EXAMPLE' … '#+END_EXAMPLE'     |
+| <E                     | '#+BEGIN_EXPORT' … '#+END_EXPORT'       |
+| <h                     | '#+BEGIN_EXPORT html' … '#+END_EXPORT'  |
+| <l                     | '#+BEGIN_EXPORT latex' … '#+END_EXPORT' |
+| <q                     | '#+BEGIN_QUOTE' … '#+END_QUOTE'         |
+| <s                     | '#+BEGIN_SRC' … '#+END_SRC'             |
+| <v                     | '#+BEGIN_VERSE' … '#+END_VERSE'         |
+
+#+begin_src emacs-lisp 
+(require 'org-tempo)
+#+end_src
+
+#+begin_src emacs-lisp
+(use-package org-auto-tangle
+  :defer t
+  :hook (org-mode . org-auto-tangle-mode))
+#+end_src
+
+** org-super-agenda
+https://mugijiru.github.io/.emacs.d/org-mode/agenda/
+#+begin_src emacs-lisp
+(use-package org-super-agenda)
+(setq org-agenda-start-on-weekday 0)
+#+end_src
+
+** Org-kanban
+#+begin_src emacs-lisp
+(use-package org-kanban)
+#+end_src
+
+
+* LANGUAGETOOL
+#+begin_src emacs-lisp
+(use-package languagetool
+  :ensure t
+  :defer t
+  :commands (languagetool-check
+             languagetool-clear-suggestions
+             languagetool-correct-at-point
+             languagetool-correct-buffer
+             languagetool-set-language
+             languagetool-server-mode
+             languagetool-server-start
+             languagetool-server-stop)
+  :config
+  (setq languagetool-java-arguments '("-Dfile.encoding=UTF-8")
+        languagetool-console-command "/opt/homebrew/opt/languagetool/bin/languagetool"
+        languagetool-server-command "/opt/homebrew/opt/languagetool/bin/languagetool-server"))
+#+end_src
+
+* RAINBOW MODE
+#+begin_src emacs-lisp
+(use-package rainbow-mode
+  :hook
+  ((org-mode prog-mode) . rainbow-mode))
+#+end_src
+
+* SUDO EDIT
+[[https://github.com/nflath/sudo-edit][sudo-edit]] gives us the ability to open files with sudo privileges or switch over to editing with sudo privileges if we initially opened the file without such privileges.
+#+begin_src emacs-lisp
+(use-package sudo-edit)
+#+end_src
+
+* WHICH-KEY
+#+begin_src emacs-lisp
+(use-package which-key
+  :init
+  (which-key-mode 1)
+  :config
+  (setq which-key-side-window-location 'bottom
+    which-key-sort-order #'which-key-key-order-alpha
+    which-key-sort-uppercase-first nil
+    which-key-add-column-padding 1
+    which-key-max-display-columns nil
+    which-key-min-display-lines 6
+    which-key-side-window-slot -10
+    which-key-side-window-max-height 0.25
+    which-key-idle-delay 0.5
+    which-key-max-description-length 25
+    which-key-allow-imprecise-window-fit t
+    which-key-separator " → " ))
+#+end_src
+
+* Sourcing the scripts
+#+begin_src emacs-lisp
+;;(require 'elpaca-setup)  ;; The Elpaca Package Manager
+(require 'buffer-move)   ;; Buffer-move for better window management
+;;(require 'app-launchers) ;; Use emacs as a run launcher like dmenu (experimental)
+#+end_src
+
+* ALL THE ICONS
+This is an icon set that can be used with dashboard, dired, ibuffer and other Emacs programs.
+  
+#+begin_src emacs-lisp
+(use-package all-the-icons
+  :ensure t
+  :if (display-graphic-p))
+
+(use-package all-the-icons-dired
+  :hook (dired-mode . (lambda () (all-the-icons-dired-mode t))))
+#+end_src
+
+* THEME
+The first line below designates the directory where will place all of our custom-made themes, which I have created only one (dtmacs).  You can create your own Emacs themes with the help of the [[https://emacsfodder.github.io/emacs-theme-editor/][Emacs Theme Editor]].  I am also installing =doom-themes= because it contains a huge collection of themes.  M-x load-theme will list all of the themes available.
+
+#+begin_src emacs-lisp
+(add-to-list 'custom-theme-load-path "~/.config/emacs/themes/")
+
+(use-package doom-themes
+  :config
+  (setq doom-themes-enable-bold t    ; if nil, bold is universally disabled
+        doom-themes-enable-italic t) ; if nil, italics is universally disabled
+  ;; Sets the default theme to load!!! 
+  (load-theme 'doom-one t)
+  ;; Enable custom neotree theme (all-the-icons must be installed!)
+  (doom-themes-neotree-config)
+  ;; Corrects (and improves) org-mode's native fontification.
+  (doom-themes-org-config))
+#+end_src
+
+* mu4e
+#+begin_src emacs-lisp
+(use-package mu4e
+  :config
+  ;; this setting allows to re-sync and re-index mail
+  ;; by pressing U
+  (setq mu4e-get-mail-command  "offlineimap -o")
+  ;; Refresh mail using isync every 10 minutes
+  (setq mu4e-update-interval (* 10 60))
+  
+  (setq
+   mue4e-headers-skip-duplicates  t
+   mu4e-view-show-images t
+   mu4e-view-show-addresses t
+   mu4e-compose-format-flowed nil
+   mu4e-date-format "%y/%m/%d"
+   mu4e-headers-date-format "%Y/%m/%d"
+   mu4e-change-filenames-when-moving t
+   mu4e-attachments-dir "~/Downloads"
+   
+   mu4e-maildir       "/Volumes/SSD/Maildir"   ;; top-level Maildir
+   ;; note that these folders below must start with /
+   ;; the paths are relative to maildir root
+   mu4e-refile-folder "/Archive"
+   mu4e-sent-folder   "/送信済みメール"
+   mu4e-drafts-folder "/下書き"
+   mu4e-trash-folder  "/ゴミ箱")
+  
+  (setq mu4e-maildir-shortcuts
+	'((:maildir "/Inbox"    :key ?i)
+	  (:maildir "/スター付き" :key ?S)
+	  (:maildir "/送信済みメール" :key ?s)
+	  (:maildir "/ゴミ箱"     :key ?t)
+	  (:maildir "/下書き"    :key ?d)
+	  (:maildir "/[Gmail]/All Mail"  :key ?a)))
+  
+  ;; Display options
+  (setq mu4e-view-show-images t)
+  (setq mu4e-view-show-addresses 't))
+#+end_src
+
+* mpv
+| ショートカットキー | 機能        |
+| M-k            | 再生/一時停止 |
+| M-,            | 少し戻る     |
+| M-.            | 少し進む     |
+
+#+begin_src emacs-lisp
+(use-package mpv
+  :config
+  (global-set-key (kbd "M-k") 'mpv-pause)
+  (global-set-key (kbd "M-,") 'mpv-seek-backward)
+  (global-set-key (kbd "M-.") 'mpv-seek-forward))
+
+;;; Wiki(https://github.com/kljohann/mpv.el/wiki)より
+;;; C-c C-lでmpv:を選択したらmvpのリンクを補完付きで入力できる
+(org-add-link-type "mpv" #'mpv-play-and-prepare-memo)
+(defun mpv-play-and-prepare-memo (path)
+  (mpv-play path)
+  (kill-new "- 0:00:00 :: start\n"))
+(defun org-mpv-complete-link (&optional arg)
+  (replace-regexp-in-string
+   "file:" "mpv:"
+   (org-file-complete-link arg)
+   t t))
+
+;;; 再生位置をM-RETで挿入させる
+(defun org-timer-item--mpv-insert-playback-position (fun &rest args)
+  "When no org timer is running but mpv is alive, insert playback position."
+  (if (and
+       (not org-timer-start-time)
+       (mpv-live-p))
+      (mpv-insert-playback-position t)
+    (apply fun args)))
+(advice-add 'org-timer-item :around
+            #'org-timer-item--mpv-insert-playback-position)
+
+;;; 0:01:02のような文字列でC-c C-oしたらその位置にジャンプさせる
+(add-hook 'org-open-at-point-functions #'mpv-seek-to-position-at-point)
+
+;;; 表示されてる時間の3秒前に飛ぶように再定義
+(defun mpv-seek-to-position-at-point ()
+  "Jump to playback position as inserted by `mpv-insert-playback-position'.
+
+This can be used with the `org-open-at-point-functions' hook."
+  (interactive)
+  (save-excursion
+    (skip-chars-backward ":[:digit:]" (point-at-bol))
+    (when (looking-at "[0-9]+:[0-9]\\{2\\}:[0-9]\\{2\\}")
+      (let ((secs (max 0 (- (org-timer-hms-to-secs (match-string 0)) 3))))
+        (when (>= secs 0)
+          (mpv--enqueue `("seek" ,secs "absolute") #'ignore)
+)))))
+
+;;(global-set-key (kbd "H-SPC") 'mpv-pause)
+;;(global-set-key (kbd "H-b") 'mpv-seek-backward)
+#+end_src
+
+* TRANSPARENCY
+With Emacs version 29, true transparency has been added.  I have turned transparency off by setting the alpha to '100'.  If you want some slight transparency, try setting alpha to '90'.  Of course, if you set alpha to '0', the background of Emacs would completely transparent.
+
+#+begin_src emacs-lisp
+(add-to-list 'default-frame-alist '(alpha-background . 80)) ; For all new frames henceforth
+#+end_src

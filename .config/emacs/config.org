@@ -98,11 +98,6 @@
 (when (equal system-type 'windows-nt)
   (elpaca-no-symlink-mode))
 
-;; Install a package via the elpaca macro
-;; See the "recipes" section of the manual for more details.
-
-;; (elpaca example-package)
-
 ;; Install use-package support
 (elpaca elpaca-use-package
   ;; Enable :elpaca use-package keyword.
@@ -120,16 +115,16 @@
 ;;(use-package general :demand t)
 ;;(elpaca-wait)
 
-;; Expands to: (elpaca evil (use-package evil :demand t))
-;;(use-package evil :demand t)
-
-;;Turns off elpaca-use-package-mode current declaration
+;;Turns off elpaca-use-package-mode current declartion
 ;;Note this will cause the declaration to be interpreted immediately (not deferred).
 ;;Useful for configuring built-in emacs features.
-(use-package emacs :elpaca nil :config (setq ring-bell-function #'ignore))
+;;(use-package emacs :elpaca nil :config (setq ring-bell-function #'ignore))
 
 ;; Don't install anything. Defer execution of BODY
-(elpaca nil (message "deferred"))
+;;(elpaca nil (message "deferred"))
+
+(provide 'elpaca-setup)
+
 #+END_SRC
 
 * GRAPHICAL USER INTERFACE TWEAKS
@@ -140,6 +135,13 @@ Let's make GNU Emacs look a little better.
 ;;(menu-bar-mode -1)
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
+#+end_src
+
+#+begin_src emacs-lisp
+;; シンボリックリンクの読み込みを許可
+(setq vc-follow-symlinks t)
+;; シンボリックリンク先のVCS内で更新が入った場合にバッファを自動更新
+(setq auto-revert-check-vc-info t)
 #+end_src
 
 * FONTS
@@ -762,6 +764,7 @@ The first line below designates the directory where will place all of our custom
 
 ;;; 0:01:02のような文字列でC-c C-oしたらその位置にジャンプさせる
 (add-hook 'org-open-at-point-functions #'mpv-seek-to-position-at-point)
+
 
 ;;; 表示されてる時間の3秒前に飛ぶように再定義
 (defun mpv-seek-to-position-at-point ()

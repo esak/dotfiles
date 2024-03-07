@@ -408,6 +408,7 @@ Emacs has built-in programming language modes for Lisp, Scheme, DSSSL, Ada, ASM,
 (use-package haskell-mode)
 (use-package julia-mode)
 (use-package yaml-mode)
+(use-package arduino-mode)
 #+end_src
 
 * ein
